@@ -1,0 +1,99 @@
+# =========================
+# Build directories
+# =========================
+build/
+build-*/
+cmake-build-*/
+out/
+dist/
+
+# =========================
+# CMake
+# =========================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+Makefile
+install_manifest.txt
+
+# Ninja
+.ninja_deps
+.ninja_log
+build.ninja
+
+# =========================
+# Binaries / libraries
+# =========================
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# =========================
+# CUDA
+# =========================
+*.cubin
+*.fatbin
+*.ptx
+*.cudafe1.cpp
+*.cudafe1.stub.c
+*.cudafe1.stub.c.tmp
+*.cudafe1.gpu
+*.cudafe1.cpp.tmp
+*.cudafe1.stub.c
+*.ii
+*.gpu
+*.nvvm
+*.sass
+*.module_id
+*.d
+
+# =========================
+# Test / coverage
+# =========================
+*.gcno
+*.gcda
+*.gcov
+coverage/
+coverage.xml
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Editors / IDEs
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# =========================
+# Python helpers / notebooks
+# =========================
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# =========================
+# Misc
+# =========================
+cache/
+tmp/
+temp/
