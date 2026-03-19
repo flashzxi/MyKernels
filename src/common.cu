@@ -2,6 +2,7 @@
 
 namespace my_kernels
 {
+MYKERNEL_HOST_DEVICE
 size_t Layout::size() const
 {
     size_t size = 1;
@@ -12,6 +13,7 @@ size_t Layout::size() const
     return size;
 }
 
+MYKERNEL_HOST_DEVICE
 size_t Layout::data_size() const
 {
     int max_stride_idx = -1;
@@ -34,8 +36,42 @@ Layout::Layout(Shape shape, int rank): shape(shape), rank(rank)
     }
 }
 
+MYKERNEL_HOST_DEVICE
+size_t Layout::locate(const Coord& coord) const
+{
+    size_t offset = 0;
+    for (int i = 0; i < rank; ++i)
+    {
+        offset += stride[i] * coord[i];
+    }
+    return offset;
+}
+
+MYKERNEL_HOST_DEVICE
+size_t Layout::convTo1D(const Coord& coord) const
+{
+    size_t cord1d = rank > 0 ? coord[0] : 0;
+    for (int i = 1; i < rank; ++i)
+    {
+        cord1d += shape[i] * coord[i];
+    }
+    return cord1d;
+}
+
+MYKERNEL_HOST_DEVICE
+Coord Layout::convToCoord(size_t coord1d) const
+{
+    Coord coord{};
+    for (int i = 0; i < rank; ++i)
+    {
+        coord[i] = coord1d % shape[i];
+        coord1d /= shape[i];
+    }
+    return coord;
+}
+
 // Tensor implementations
-Tensor::Tensor(void* data, Layout layout, DataType dateType, DeviceType deviceType):
+HostTensor::HostTensor(void* data, Layout layout, DataType dateType, DeviceType deviceType):
     layout(std::move(layout)),
     dateType(dateType)
 {
@@ -48,7 +84,7 @@ Tensor::Tensor(void* data, Layout layout, DataType dateType, DeviceType deviceTy
     }
 }
 
-cudaError_t Tensor::copy_to_device()
+cudaError_t HostTensor::copy_to_device()
 {
     assert(data_host != nullptr);
     CUDA_CHECK(cudaMalloc(&data_device, layout.data_size() * dataTypeSize(dateType)));
@@ -56,7 +92,7 @@ cudaError_t Tensor::copy_to_device()
     return cudaSuccess;
 }
 
-cudaError_t Tensor::copy_to_host()
+cudaError_t HostTensor::copy_to_host()
 {
     assert(data_device != nullptr);
     data_host = new char[layout.data_size() * dataTypeSize(dateType)];
@@ -64,29 +100,29 @@ cudaError_t Tensor::copy_to_host()
     return cudaSuccess;
 }
 
-cudaError_t Tensor::free_host()
+cudaError_t HostTensor::free_host()
 {
     delete [] (char*) data_host;
     data_host = nullptr;
     return cudaSuccess;
 }
 
-cudaError_t Tensor::free_device()
+cudaError_t HostTensor::free_device()
 {
     CUDA_CHECK(cudaFree(data_device));
     data_device = nullptr;
     return cudaSuccess;
 }
 
-cudaError_t Tensor::allocate_device()
+cudaError_t HostTensor::allocate_device()
 {
     CUDA_CHECK(cudaMalloc(&data_device, layout.data_size() * dataTypeSize(dateType)));
     return cudaSuccess;
 }
 
-Shape make_shape(std::vector<int> shape_vec)
+Shape make_array(const std::vector<int>& shape_vec)
 {
-    assert(shape_vec.size() <= MAX_DIMS, "make_shape supports at most 8 arguments");
+    assert(shape_vec.size() <= MAX_DIMS, "supports at most 8 arguments");
     Shape shape{};
     for (int i = 0; i < shape_vec.size(); ++i)
     {
@@ -94,14 +130,29 @@ Shape make_shape(std::vector<int> shape_vec)
     }
     return shape;
 }
-Shape make_stride(std::vector<int> stride_vec)
+
+Shape make_shape(const std::vector<int>& shape_vec)
 {
-    assert(stride_vec.size() <= MAX_DIMS, "make_stride supports at most 8 arguments");
-    Stride stride{};
-    for (int i = 0; i < stride_vec.size(); ++i)
-    {
-        stride[i] = stride_vec[i];
-    }
-    return stride;
+    return make_array(shape_vec);
+}
+
+Stride make_stride(const std::vector<int>& stride_vec)
+{
+    return make_array(stride_vec);
+}
+
+Stride make_coord(const std::vector<int>& coord_vec)
+{
+    return make_array(coord_vec);
+}
+
+int getMaxThreadsPerBlock()
+{
+    int dev = 0;
+    CUDA_CHECK(cudaSetDevice(dev));
+
+    cudaDeviceProp prop{};
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, dev));
+    return prop.maxThreadsPerBlock;
 }
 }

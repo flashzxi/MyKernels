@@ -4,6 +4,5 @@
 
 namespace my_kernels
 {
-int softmax(const Tensor& input, int dim, DataType datatype, Tensor& output);
-int safe_softmax(const Tensor& input, int dim, DataType datatype, Tensor& output);
+MyKernelStatus softmax(const void* input, Layout layout, int dim, DataType datatype, HostTensor& output, cudaStream_t stream = nullptr);
 }

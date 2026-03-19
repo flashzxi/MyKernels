@@ -5,9 +5,13 @@
 #include <cstddef>
 #include <cstdio>
 #include <array>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 namespace my_kernels
 {
+#define MYKERNEL_HOST_DEVICE __host__ __device__
+
 #define CUDA_CHECK(err)                                                        \
     do {                                                                       \
         cudaError_t _err = (err);                                              \
@@ -18,44 +22,93 @@ namespace my_kernels
                         __LINE__,                                              \
                         #err,                                                  \
                         cudaGetErrorString(_err));                             \
-            return _err;                                                       \
+            exit(-1);                                                          \
         }                                                                      \
     } while (0)
 
 constexpr int MAX_DIMS = 8;
 typedef std::array<int, MAX_DIMS> Shape;
 typedef std::array<int, MAX_DIMS> Stride;
+typedef std::array<int, MAX_DIMS> Coord;
+
+int getMaxThreadsPerBlock();
 
 template <typename... Ts>
+MYKERNEL_HOST_DEVICE
+Shape make_array(Ts... xs)
+{
+    static_assert(sizeof...(Ts) <= MAX_DIMS, "supports at most 8 arguments");
+    static_assert((std::is_integral_v<Ts> && ...), "arguments must be integral");
+
+    Shape shape{};
+    int values[] = { static_cast<int>(xs)... };
+    for (int i = 0; i < static_cast<int>(sizeof...(Ts)); ++i) {
+        shape[i] = values[i];
+    }
+    return shape;
+}
+
+template <typename... Ts>
+MYKERNEL_HOST_DEVICE
 Shape make_shape(Ts... xs)
 {
-    static_assert(sizeof...(Ts) <= MAX_DIMS, "make_shape supports at most 8 arguments");
-    static_assert((std::is_integral_v<Ts> && ...), "make_shape arguments must be integral");
-
-    Shape shape{};
-    int values[] = { static_cast<int>(xs)... };
-    for (int i = 0; i < static_cast<int>(sizeof...(Ts)); ++i) {
-        shape[i] = values[i];
-    }
-    return shape;
+    return make_array(xs...);
 }
 
 template <typename... Ts>
-Shape make_stride(Ts... xs)
+MYKERNEL_HOST_DEVICE
+Stride make_stride(Ts... xs)
 {
-    static_assert(sizeof...(Ts) <= MAX_DIMS, "make_stride supports at most 8 arguments");
-    static_assert((std::is_integral_v<Ts> && ...), "make_stride arguments must be integral");
-
-    Shape shape{};
-    int values[] = { static_cast<int>(xs)... };
-    for (int i = 0; i < static_cast<int>(sizeof...(Ts)); ++i) {
-        shape[i] = values[i];
-    }
-    return shape;
+    return make_array(xs...);
 }
 
-Shape make_shape(std::vector<int> shape);
-Shape make_stride(std::vector<int> stride);
+template <typename... Ts>
+MYKERNEL_HOST_DEVICE
+Coord make_coord(Ts... xs)
+{
+    return make_array(xs...);
+}
+
+MYKERNEL_HOST_DEVICE
+Shape make_shape(const std::vector<int>& shape_vec);
+
+MYKERNEL_HOST_DEVICE
+Stride make_stride(const std::vector<int>& stride_vec);
+
+MYKERNEL_HOST_DEVICE
+Stride make_coord(const std::vector<int>& coord_vec);
+
+template <typename T>
+MYKERNEL_HOST_DEVICE
+T floatConvTo(float fv)
+{
+    if constexpr (std::is_same_v<T, __half>)
+    {
+        return __float2half(fv);
+    } else if constexpr (std::is_same_v<T, __bf16>)
+    {
+        return __float2bfloat16(fv);
+    } else if constexpr (std::is_same_v<T, float>)
+    {
+        return fv;
+    }
+}
+
+template <typename T>
+MYKERNEL_HOST_DEVICE
+float convToFloat(T fv)
+{
+    if constexpr (std::is_same_v<T, __half>)
+    {
+        return __half2float(fv);
+    } else if constexpr (std::is_same_v<T, __bf16>)
+    {
+        return __bfloat162float(fv);
+    } else if constexpr (std::is_same_v<T, float>)
+    {
+        return fv;
+    }
+}
 
 enum class DataType : int {
     DATATYPE_FLOAT32 = 0,
@@ -86,6 +139,12 @@ enum class DeviceType: int {
     POS_HOST,
 };
 
+enum class MyKernelStatus : int
+{
+    MYKERNEL_SUCCESS,
+    MYKERNEL_NOT_SUPPORT,
+};
+
 struct Layout
 {
     Shape shape;
@@ -96,20 +155,33 @@ struct Layout
 
     Layout(Shape shape, int rank);
 
+    MYKERNEL_HOST_DEVICE
+    [[nodiscard]] size_t locate(const Coord& coord) const;
+
+    // following CuTe’s left-to-right priority
+    MYKERNEL_HOST_DEVICE
+    [[nodiscard]] size_t convTo1D(const Coord& coord) const;
+
+    MYKERNEL_HOST_DEVICE
+    [[nodiscard]] Coord convToCoord(size_t coord1d) const;
+
+    MYKERNEL_HOST_DEVICE
     [[nodiscard]] size_t size() const;
 
+    MYKERNEL_HOST_DEVICE
     [[nodiscard]] size_t data_size() const;
 };
 
-struct Tensor
+class HostTensor
 {
+private:
     void* data_host = nullptr;
     void* data_device = nullptr;
     Layout layout;
     DataType dateType;
 
 public:
-    Tensor(void* data, Layout layout, DataType dateType, DeviceType deviceType = DeviceType::POS_HOST);
+    HostTensor(void* data, Layout layout, DataType dateType, DeviceType deviceType = DeviceType::POS_HOST);
 
     cudaError_t copy_to_device();
 
@@ -120,5 +192,19 @@ public:
     cudaError_t free_device();
 
     cudaError_t allocate_device();
+
+    template <typename T>
+    T* get_host_data()
+    {
+        return reinterpret_cast<T*>(data_host);
+    }
+
+    template <typename T>
+    T* get_device_data()
+    {
+        return reinterpret_cast<T*>(data_device);
+    }
+
+    ~HostTensor();
 };
 }
