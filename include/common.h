@@ -170,6 +170,8 @@ struct Layout
 
     MYKERNEL_HOST_DEVICE
     [[nodiscard]] size_t data_size() const;
+
+    [[nodiscard]] bool is_contiguous() const;
 };
 
 class HostTensor

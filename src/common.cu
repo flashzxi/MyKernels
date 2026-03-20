@@ -16,8 +16,10 @@ size_t Layout::size() const
 MYKERNEL_HOST_DEVICE
 size_t Layout::data_size() const
 {
-    int max_stride_idx = -1;
-    for (int i = 0; i < rank(); ++i)
+    if (rank == 0) return 0;
+
+    int max_stride_idx = 0;
+    for (int i = 1; i < rank; ++i)
     {
         if (stride[i] > stride[max_stride_idx])
         {
@@ -25,6 +27,11 @@ size_t Layout::data_size() const
         }
     }
     return shape[max_stride_idx] * stride[max_stride_idx];
+}
+
+bool Layout::is_contiguous() const
+{
+    return data_size() == size();
 }
 
 Layout::Layout(Shape shape, int rank): shape(shape), rank(rank)
