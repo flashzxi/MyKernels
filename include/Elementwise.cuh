@@ -5,18 +5,6 @@
 namespace my_kernels
 {
 
-struct AddOp
-{
-    constexpr int INPUT_SIZE = 2;
-
-    template <typename T>
-    MYKERNEL_HOST_DEVICE
-    static T calc(T a, T b)
-    {
-        return a + b;
-    }
-};
-
 // 拼接参数到一起
 struct ElementwiseInfo
 {
@@ -101,9 +89,16 @@ public:
     }
 };
 
-template <typename ELEMENT_OP, typename T,typename... Args>
+template<typename F, size_t... Is>
 MYKERNEL_HOST_DEVICE
-void elementwise_kernel(int input_size, T** inputs, int** input_shape, int** input_stride,
+void unpackInputsAndApply(F &&f, std::index_sequence<Is...>)
+{
+    f(std::integral_constant<size_t, Is>{}...);
+}
+
+template <typename ELEMENT_OP, typename T, typename... Args>
+MYKERNEL_HOST_DEVICE
+void elementwise_kernel(int rank, int input_size, T** inputs, int** input_shapes, int** input_strides,
         T* output, int* output_shape, int* output_stride, int total_size, Args ...args)
 {
     assert(T::INPUT_SIZE == input_size);
@@ -112,11 +107,15 @@ void elementwise_kernel(int input_size, T** inputs, int** input_shape, int** inp
 
     for (; tid < total_size; tid += step)
     {
-        ELEMENT_OP::calc();
+        unpackInputsAndApply(
+            [&] (auto... Is) {
+                output[tid2idx(tid, output_shape, output_stride, rank)] =
+                    ELEMENT_OP::calc(inputs[Is.value][tid2idx(tid, input_shapes[Is.value], input_strides[Is.value], rank)]..., args...);
+            }, std::make_index_sequence<ELEMENT_OP::INPUT_SIZE>{});
     }
 }
 
-template <typename ELEMENT_OP, typename ...Args>
+template <size_t BLOCK_SIZE, typename ELEMENT_OP, typename T, typename ...Args>
 MyKernelStatus elementwiseExecute(
         std::vector<void*> inputs,
         std::vector<Layout> input_layouts,
@@ -126,7 +125,6 @@ MyKernelStatus elementwiseExecute(
         cudaStream_t stream,
         Args... args)
 {
-    int* input_nums = nullptr;
     int* output_shape = nullptr;
     int* output_stride = nullptr;
     int** input_shapes = nullptr;
@@ -159,7 +157,12 @@ MyKernelStatus elementwiseExecute(
     input_strides = reinterpret_cast<int**>(d_info_ptr + info.getAllInputsStrideOffset());
     input_datas = reinterpret_cast<int**>(d_info_ptr + info.getAllInputsDataOffset());
 
+    dim3 blockDims(std::min(BLOCK_SIZE, static_cast<size_t>(getMaxThreadsPerBlock())));
+    dim3 gridDims((output_layout.size() + blockDims.x - 1) / blockDim.x);
+    elementwise_kernel<ELEMENT_OP, T><<<gridDims, blockDims, 0, stream>>>(output_layout.rank, inputs.size(), input_datas,
+        input_shapes, input_strides, d_output_ptr, output_shape, output_stride, output_layout.size(), args...);
 
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     CUDA_CHECK(cudaMemcpyAsync(
         output, d_output_ptr, output_layout.data_size() * dataTypeSize(dataType), cudaMemcpyDeviceToHost, stream));
@@ -172,12 +175,4 @@ MyKernelStatus elementwiseExecute(
     return MyKernelStatus::MYKERNEL_SUCCESS;
 
 }
-
-template MyKernelStatus elementwiseExecute<AddOp>(
-        std::vector<void*> inputs,
-        std::vector<Layout> input_layouts,
-        void* output,
-        Layout output_layout,
-        DataType dataType,
-        cudaStream_t stream);
 }

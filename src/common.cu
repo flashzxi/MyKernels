@@ -29,6 +29,18 @@ size_t Layout::data_size() const
     return shape[max_stride_idx] * stride[max_stride_idx];
 }
 
+MYKERNEL_HOST_DEVICE
+size_t tid2idx(size_t tid, int* shape, int* stride, int rank)
+{
+    size_t offset = 0;
+    for (int i = 0; i < rank; ++i)
+    {
+        offset += stride[i] * (tid % shape[i]);
+        tid /= shape[i];
+    }
+    return offset;
+}
+
 bool Layout::is_contiguous() const
 {
     return data_size() == size();

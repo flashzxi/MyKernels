@@ -31,6 +31,9 @@ typedef std::array<int, MAX_DIMS> Shape;
 typedef std::array<int, MAX_DIMS> Stride;
 typedef std::array<int, MAX_DIMS> Coord;
 
+MYKERNEL_HOST_DEVICE
+size_t tid2idx(size_t tid, int* shape, int* stride, int rank);
+
 int getMaxThreadsPerBlock();
 
 template <typename... Ts>

@@ -15,14 +15,15 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
             "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
 endif()
 
+add_subdirectory(third_party/pybind11)
+
 file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
 
-add_library(my_kernels ${LIB_SOURCES}
-        src/common.cu)
+pybind11_add_module(my_kernels ${LIB_SOURCES})
 
 target_include_directories(my_kernels
         PUBLIC
@@ -73,7 +74,10 @@ foreach(test_src IN LISTS TEST_SOURCES)
     add_executable(${test_name} ${test_src}
             include/Softmax.h
             src/Softmax.cu
-            include/common.h)
+            include/common.h
+            include/Elementwise.h
+            include/python/my_kernel_bind.h
+            src/Add.cu)
 
     target_link_libraries(${test_name}
             PRIVATE

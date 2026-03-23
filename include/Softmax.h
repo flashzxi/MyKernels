@@ -4,5 +4,5 @@
 
 namespace my_kernels
 {
-MyKernelStatus softmax(const void* input, Layout layout, int dim, DataType datatype, HostTensor& output, cudaStream_t stream = nullptr);
+MyKernelStatus softmax(const void* input, void* output, Layout layout, int dim, DataType datatype, cudaStream_t stream);
 }
